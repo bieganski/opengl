@@ -13,7 +13,7 @@ def draw_pixels(pixels : List[Tuple[int, int]], w=640, h=480):
         im.putpixel(p, 255)
     # im.show()
     plt.imshow(np.asarray(im))
-    # plt.show()
+    plt.show()
 
 
 def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
@@ -38,6 +38,3 @@ def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
 def draw_line(x0, y0, x1, y1, w=640, h=480):
     pixels = list(bresenham(x0, y0, x1, y1))
     draw_pixels(pixels, w, h)
-
-with Profiler():
-    draw_line(10, 10, 200, 400)
