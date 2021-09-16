@@ -2,6 +2,7 @@
 
 from typing import List, Tuple
 from profiler import Profiler
+# from drawer import bresenham
 
 def draw_pixels(pixels : List[Tuple[int, int]], w=640, h=480):
     from PIL import Image
@@ -16,7 +17,39 @@ def draw_pixels(pixels : List[Tuple[int, int]], w=640, h=480):
     plt.show()
 
 
+def fill_triangle(vs : List[Tuple[int, int]], w: int, h: int):
+    assert len(vs) == 3
+
+    # sort vertices descending by height
+    descending = lambda lst2 : sorted(lst2, key=lambda x : x[1], reverse=True)
+  
+    def getl2r2(top, mid, bot):
+        pass
+        l2 = bresenham(*bot, *top)
+        l2.reverse()
+        assert descending(l2) == l2
+        r2_1 = bresenham(*bot, *mid)
+        r2_1.reverse()
+        assert descending(r2_1) == r2_1
+        r2_2 = bresenham(*mid, *top)
+        r2_2.reverse()
+        assert descending(r2_2) == r2_2
+        r2 = r2_1 + r2_2
+        assert len(l2) == len(r2), f"{len(l2)}xx{len(r2)}"
+
+        while len(l2):
+            yield l2.pop(), r2.pop()
+
+    fill = []
+    for l2, r2 in getl2r2(*descending(vs)):
+        fill.extend(bresenham(*l2, *r2))
+    draw_pixels(fill, w, h)
+
+
 def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
+    return list(_bresenham(x0, y0, x1, y1))
+
+def _bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
     dx = abs(x0 - x1)
     dy = abs(y0 - y1)
     err = dx - dy
@@ -36,5 +69,5 @@ def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
             err += dx
 
 def draw_line(x0, y0, x1, y1, w=640, h=480):
-    pixels = list(bresenham(x0, y0, x1, y1))
+    pixels = bresenham(x0, y0, x1, y1)
     draw_pixels(pixels, w, h)
