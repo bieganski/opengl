@@ -46,43 +46,34 @@ class Solution():
 
             # https://stackoverflow.com/a/40360416
             def normalize(v):
-                norm=np.linalg.norm(v, ord=2)
+                norm=np.linalg.norm(v, ord=1)
                 if norm==0:
                     norm=np.finfo(float).eps
                 return v/norm
             triangle = [list(x) for x in triangle]
-            # for p in triangle:
-            #     p.append(0)
             a, b, c = map(np.array, triangle)
-            # raise ValueError(a, b, c)
             ab, ac = b - a, c - a
-            # raise ValueError(ab, ac)
             v = np.cross(ab, ac)
             v = normalize(v)
-            norm=np.linalg.norm(v, ord=2)
-            print("n: ", norm(v))
-            # print(v)
-            light = np.array([1,1,1])
+            light = np.array([0.5,1,0])
             intensity = np.dot(light, v)
             if intensity <= 0:
-                print("ZLE")
-                return 0
-            # else:
-            #     print("OK")
-            # print(intensity)
-            res = int(255 * intensity)
-            return res
+                return None
+            from numpy import interp
+            mmax  = sum(abs(light))
+            fr, to = [-mmax, mmax], [0., 255.]
+            intensity = interp(intensity, fr, to)
+            return int(intensity)
             
-        # tu jestem
-        # okazuje się że do policzenia light trzeba(na pewno?) koordy floatowe. TODO why
         w, h = 400, 400
         im = Image.new("L", (w, h))
         for f in tqdm(fs):
             fcoords3 = itemgetter(*f)(vs)
-            # raise ValueError(fcoords3)
             # we don't care about Z axis for now.
             triangle = list(map(lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1), fcoords3))
             color = calculate_color(fcoords3)
+            if color is None:
+                continue
             pixels = fill_triangle(triangle, w, h)
             for p in pixels:
                 im.putpixel(p, value=color)
