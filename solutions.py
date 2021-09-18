@@ -38,32 +38,55 @@ class Solution():
         draw_pixels(pixels, w, h)
 
     @staticmethod
-    def lab2():
+    def calculate_color_back_face_culling(triangle):
+        # https://stackoverflow.com/a/40360416
+        def normalize(v):
+            norm=np.linalg.norm(v, ord=1)
+            if norm==0:
+                norm=np.finfo(float).eps
+            return v/norm
+        triangle = [list(x) for x in triangle]
+        a, b, c = map(np.array, triangle)
+        ab, ac = b - a, c - a
+        v = np.cross(ab, ac)
+        v = normalize(v)
+        light = np.array([0.5,1,0])
+        intensity = np.dot(light, v)
+        if intensity <= 0:
+            return None
+        from numpy import interp
+        mmax  = sum(abs(light))
+        fr, to = [-mmax, mmax], [0., 255.]
+        intensity = interp(intensity, fr, to)
+        return int(intensity)
+
+    @staticmethod
+    def calculate_color_zbuffer(triangle):
+        # https://stackoverflow.com/a/40360416
+        def normalize(v):
+            norm=np.linalg.norm(v, ord=1)
+            if norm==0:
+                norm=np.finfo(float).eps
+            return v/norm
+        triangle = [list(x) for x in triangle]
+        a, b, c = map(np.array, triangle)
+        ab, ac = b - a, c - a
+        v = np.cross(ab, ac)
+        v = normalize(v)
+        light = np.array([0.5,1,0])
+        intensity = np.dot(light, v)
+        if intensity <= 0:
+            return None # XXX
+        from numpy import interp
+        mmax  = sum(abs(light))
+        fr, to = [-mmax, mmax], [0., 255.]
+        intensity = interp(intensity, fr, to)
+        return int(intensity)
+
+    @staticmethod
+    def shade_polygons(color_function):
         vs = ModelParser.get_vertices(path)
         fs = ModelParser.get_faces(path)
-
-        def calculate_color(triangle):
-
-            # https://stackoverflow.com/a/40360416
-            def normalize(v):
-                norm=np.linalg.norm(v, ord=1)
-                if norm==0:
-                    norm=np.finfo(float).eps
-                return v/norm
-            triangle = [list(x) for x in triangle]
-            a, b, c = map(np.array, triangle)
-            ab, ac = b - a, c - a
-            v = np.cross(ab, ac)
-            v = normalize(v)
-            light = np.array([0.5,1,0])
-            intensity = np.dot(light, v)
-            if intensity <= 0:
-                return None
-            from numpy import interp
-            mmax  = sum(abs(light))
-            fr, to = [-mmax, mmax], [0., 255.]
-            intensity = interp(intensity, fr, to)
-            return int(intensity)
             
         w, h = 400, 400
         im = Image.new("L", (w, h))
@@ -71,7 +94,7 @@ class Solution():
             fcoords3 = itemgetter(*f)(vs)
             # we don't care about Z axis for now.
             triangle = list(map(lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1), fcoords3))
-            color = calculate_color(fcoords3)
+            color = Solution.calculate_color_back_face_culling(fcoords3)
             if color is None:
                 continue
             pixels = fill_triangle(triangle, w, h)
@@ -79,3 +102,11 @@ class Solution():
                 im.putpixel(p, value=color)
         plt.imshow(np.asarray(im))
         plt.show()
+
+    @staticmethod
+    def lab2():
+        Solution.shade_polygons(Solution.calculate_color_back_face_culling)
+
+    @staticmethod
+    def lab3():
+        Solution.shade_polygons(Solution.calculate_color_zbuffer)
