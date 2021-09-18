@@ -5,6 +5,7 @@ from drawer import draw_pixels, bresenham, fill_triangle
 from pathlib import Path
 from operator import itemgetter
 from itertools import combinations, chain
+from dataclasses import dataclass
 
 from PIL import Image
 from matplotlib import pyplot as plt
@@ -37,70 +38,75 @@ class Solution():
 
         draw_pixels(pixels, w, h)
 
+    # https://stackoverflow.com/a/40360416
     @staticmethod
-    def calculate_color_back_face_culling(triangle):
-        # https://stackoverflow.com/a/40360416
-        def normalize(v):
-            norm=np.linalg.norm(v, ord=1)
-            if norm==0:
-                norm=np.finfo(float).eps
-            return v/norm
-        triangle = [list(x) for x in triangle]
-        a, b, c = map(np.array, triangle)
-        ab, ac = b - a, c - a
-        v = np.cross(ab, ac)
-        v = normalize(v)
-        light = np.array([0.5,1,0])
-        intensity = np.dot(light, v)
-        if intensity <= 0:
-            return None
-        from numpy import interp
-        mmax  = sum(abs(light))
-        fr, to = [-mmax, mmax], [0., 255.]
-        intensity = interp(intensity, fr, to)
-        return int(intensity)
+    def normalize(v):
+        norm = np.linalg.norm(v, ord=1)
+        if norm == 0:
+            norm = np.finfo(float).eps
+        return v / norm
 
     @staticmethod
-    def calculate_color_zbuffer(triangle):
-        # https://stackoverflow.com/a/40360416
-        def normalize(v):
-            norm=np.linalg.norm(v, ord=1)
-            if norm==0:
-                norm=np.finfo(float).eps
-            return v/norm
-        triangle = [list(x) for x in triangle]
-        a, b, c = map(np.array, triangle)
-        ab, ac = b - a, c - a
-        v = np.cross(ab, ac)
-        v = normalize(v)
-        light = np.array([0.5,1,0])
-        intensity = np.dot(light, v)
-        if intensity <= 0:
-            return None # XXX
-        from numpy import interp
-        mmax  = sum(abs(light))
-        fr, to = [-mmax, mmax], [0., 255.]
-        intensity = interp(intensity, fr, to)
-        return int(intensity)
+    def calculate_color_back_face_culling(all_fcoords3, _, __):
+        for triangle in all_fcoords3:
+            triangle = [list(x) for x in triangle]
+            a, b, c = map(np.array, triangle)
+            ab, ac = b - a, c - a
+            v = np.cross(ab, ac)
+            v = Solution.normalize(v)
+            light = np.array([0,1,0])
+            intensity = np.dot(light, v)
+            # yield must be the last instruction in a loop to work properly.
+            if intensity <= 0:
+                yield None
+            else:
+                mmax = sum(abs(light))
+                fr, to = [-mmax, mmax], [0., 255.]
+                intensity = np.interp(intensity, fr, to)
+                yield int(intensity)
 
     @staticmethod
-    def shade_polygons(color_function):
+    def calculate_color_zbuffer(all_fcoords3, w, h):
+        
+        @dataclass
+        class State():
+            w : int
+            h : int
+            _zbuffer : np.ndarray
+
+            def __post_init__(self):
+                self._zbuffer = np.empty(shape=(self.w, h))
+        
+        a = State()
+        raise NotImplementedError()
+
+    @staticmethod
+    def shade_polygons(render_function):
         vs = ModelParser.get_vertices(path)
         fs = ModelParser.get_faces(path)
             
         w, h = 400, 400
         im = Image.new("L", (w, h))
-        for f in tqdm(fs):
-            fcoords3 = itemgetter(*f)(vs)
-            # we don't care about Z axis for now.
-            triangle = list(map(lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1), fcoords3))
-            color = Solution.calculate_color_back_face_culling(fcoords3)
+
+        lmap = lambda f, x : list(map(f,x))
+        
+        fcoords3 = [itemgetter(*f)(vs) for f in fs]
+        def f3_to_i2(f3):
+            # discards Z axis
+            f = lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1)
+            return lmap(f, f3)
+        icoords2 = lmap(f3_to_i2, fcoords3)
+
+        render_fn = render_function(fcoords3, w, h)
+        for color, triangle in tqdm(zip(render_fn, icoords2)):
             if color is None:
                 continue
             pixels = fill_triangle(triangle, w, h)
             for p in pixels:
                 im.putpixel(p, value=color)
-        plt.imshow(np.asarray(im))
+        im = np.asarray(im)
+        im = np.flip(im, 0)
+        plt.imshow(im)
         plt.show()
 
     @staticmethod
