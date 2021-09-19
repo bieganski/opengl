@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 import numpy as np
 from tqdm import tqdm
 
-path = Path("model.obj")
+path = Path("model/model.obj")
 
 class Solution():
 
@@ -126,7 +126,9 @@ class Solution():
     @staticmethod
     def shade_polygons(render_function : Callable, fill_function : Callable):
         vs = ModelParser.get_vertices(path)
+        vts = ModelParser.get_texture_vertices(path)
         fs = ModelParser.get_faces(path)
+        ts = ModelParser.get_textures(path)
             
         w, h = 400, 400
         im = Image.new("L", (w, h))
@@ -138,12 +140,16 @@ class Solution():
             return lmap(f, f3)
         
         fcoords3 = [itemgetter(*f)(vs) for f in fs]
+        tvcoords3 = [itemgetter(*f)(vts) for f in ts]
         icoords2 = lmap(f3_to_i3, fcoords3)
 
+        # raise ValueError(tvcoords3[0])
+
         render_fn = render_function(fcoords3)
-        for color, triangle in tqdm(zip(render_fn, icoords2)):
-            if color is None:
+        for color_intensity, triangle, texture in tqdm(zip(render_fn, icoords2, ts)):
+            if color_intensity is None:
                 continue
+            color = color_intensity # XXX
             for pixel in fill_function(triangle):
                 im.putpixel(pixel, value=color)
         
