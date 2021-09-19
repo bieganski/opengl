@@ -50,13 +50,13 @@ class Solution():
 
     # returns normalized value - from interval [-1.0; 1.0]
     @staticmethod
-    def calculate_color_intensity(triangle_fcoords):
+    def calculate_color_intensity_norm(triangle_fcoords):
         triangle_fcoords = [list(x) for x in triangle_fcoords]
         a, b, c = map(np.array, triangle_fcoords)
         ab, ac = b - a, c - a
         v = np.cross(ab, ac)
         v = Solution.normalize(v)
-        light = np.array([0,1,0])
+        light = np.array([1,1,1])
         intensity = np.dot(light, v)
         mmax = sum(abs(light))
         fr, to = [-mmax, mmax], [-1., 1.]
@@ -64,51 +64,64 @@ class Solution():
         return intensity
         
     @staticmethod
-    def calculate_color_back_face_culling(all_fcoords3, _, __):
+    def calculate_color_back_face_culling(all_fcoords3):
         for triangle in all_fcoords3:
-            intensity = __class__.calculate_color_intensity(triangle)
+            intensity = __class__.calculate_color_intensity_norm(triangle)
             if intensity <= 0:
                 yield None
             else:
-                fr, to = [0., 1.], [0., 255.] # no ABS
+                fr, to = [0., 1.], [0., 255.]
                 intensity = np.interp(intensity, fr, to)
                 yield int(intensity)
 
     @staticmethod
-    def calculate_color_zbuffer(all_fcoords3, w, h):
+    def calculate_color_zbuffer(all_fcoords3):
         for triangle in all_fcoords3:
-            intensity = __class__.calculate_color_intensity(triangle)
-            fr, to = [-1., 1.], [0., 255.] # ABS
+            intensity = __class__.calculate_color_intensity_norm(triangle)
+            intensity = abs(intensity)
+            fr, to = [0., 1.], [0., 255.]
             intensity = np.interp(intensity, fr, to)
             yield int(intensity)
 
     # * finds bounding box and calculates barycentric coordinates
     # * returns pixel if and only if all it's barycentric coords are positive
     @staticmethod
-    def fill_full_triangle(vs : List[Tuple[int, int]]):
-        f = lambda x: all(x >= 0)
+    def fill_full_triangle(vs : List[Tuple[int, int, int]]):
+        f = lambda _, barycentric_coords, __: not any(barycentric_coords < 0)
         return triangle_bbox_iterate(vs, f)
+
+    @dataclass
+    class State():
+        w : int
+        h : int
+        zbuffer : np.ndarray = None
+        def __post_init__(self):
+            self.zbuffer = np.empty(shape=(self.w, self.h), dtype=float)
+            self.zbuffer.fill(np.finfo(float).min)
+
+    state = State(400, 400) # XXX use w,h
+    
+    @staticmethod
+    def f(vs, barycentric_coords, euclidean_coords):
+        # nonlocal __class__.state # capture state (preserved for all invocations)
+        if any(barycentric_coords < 0):
+            return False # not inside triangle
+        z_axis = [c[2] for c in vs]
+        z = sum([w * c for w, c in zip(barycentric_coords, z_axis)])
+        x, y = euclidean_coords
+        state = __class__.state
+        if state.zbuffer[x, y] < z:
+            state.zbuffer[x, y] = z
+            return True
+        else:
+            return False # inside triangle but invsible - tucked behind
 
     # * finds bounding box and calculates barycentric coordinates
-    # * draws pixel if zcoords are ok XXX
+    # * draws pixel only if it will be visible, according to current state (zbuffer)
     @staticmethod
-    def fill_triangle_zbuffer(vs : List[Tuple[int, int]]):
+    def fill_triangle_zbuffer(vs : List[Tuple[int, int, int]]):
+        return triangle_bbox_iterate(vs, __class__.f)
 
-        @dataclass
-        class State():
-            w : int
-            h : int
-            zbuffer : np.ndarray = None
-            def __post_init__(self):
-                self.zbuffer = np.empty(shape=(self.w, self.h))
-
-        state = State(400, 400) # XXX use w,h
-
-        def f(barycentric_coords):
-            nonlocal state # capture state (preserved for all invocations)
-            return True
-        
-        return triangle_bbox_iterate(vs, f)
 
     @staticmethod
     def shade_polygons(render_function : Callable, fill_function : Callable):
@@ -120,20 +133,20 @@ class Solution():
 
         lmap = lambda f, x : list(map(f,x))
         
-        fcoords3 = [itemgetter(*f)(vs) for f in fs]
-        def f3_to_i2(f3):
-            # discards Z axis
-            f = lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1)
+        def f3_to_i3(f3):
+            f = lambda abc: (int((abc[0] + 1.0) * w/2) - 1, int((abc[1] + 1.0) * h/2) - 1, int((abc[2] + 1.0) * w/2) - 1)
             return lmap(f, f3)
-        icoords2 = lmap(f3_to_i2, fcoords3)
+        
+        fcoords3 = [itemgetter(*f)(vs) for f in fs]
+        icoords2 = lmap(f3_to_i3, fcoords3)
 
-        render_fn = render_function(fcoords3, w, h)
+        render_fn = render_function(fcoords3)
         for color, triangle in tqdm(zip(render_fn, icoords2)):
             if color is None:
                 continue
-            pixels = fill_function(triangle)
-            for p in pixels:
-                im.putpixel(p, value=color)
+            for pixel in fill_function(triangle):
+                im.putpixel(pixel, value=color)
+        
         im = np.asarray(im)
         im = np.flip(im, 0)
         plt.imshow(im)

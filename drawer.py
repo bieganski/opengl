@@ -27,6 +27,7 @@ def cross(v1, v2):
 def barycentric(vs : List[Tuple[int, int]], p : Tuple[int, int]):
     assert len(vs) == 3
     vs = np.array(vs) # for vectorized + and - ops
+    vs = [v[:2] for v in vs] # discard Z axis if exists
     
     # TODO
     # why the hell I had to use BA and CA instead of AC, CA to make it work?
@@ -48,7 +49,7 @@ def barycentric(vs : List[Tuple[int, int]], p : Tuple[int, int]):
 
 
 def triangle_bbox_iterate(vs : List[Tuple[int, int]], fn: Callable[[np.ndarray], bool]) -> List[Tuple[int, int]]:
-    ws, hs = zip(*vs)
+    ws, hs, _ = zip(*vs)
     bbox_top, bbox_bot = max(hs), min(hs)
     bbox_r, bbox_l = max(ws), min(ws)
 
@@ -62,9 +63,9 @@ def triangle_bbox_iterate(vs : List[Tuple[int, int]], fn: Callable[[np.ndarray],
     pixels = []
     for p in points:
         barycentric_coords = barycentric(vs, p)
-        if fn(barycentric_coords):
+        if fn(vs, barycentric_coords, p):
             pixels.append(p)
-    return pixels 
+    return pixels
 
 
 def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:
