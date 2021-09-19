@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 import numpy as np
+from itertools import product
 
-# from drawer import bresenham
 
 def draw_pixels(pixels : List[Tuple[int, int]], w=640, h=480, color=0xff):
     from PIL import Image
@@ -23,13 +23,31 @@ def cross(v1, v2):
     c = v1[0] * v2[1] - v1[1] * v2[0]
     return a,b,c
 
-# * finds bounding box
-# * calculates barycentric coordinates
-# * draws pixel only if all it's barycentric coords are positive
-def fill_triangle(vs : List[Tuple[int, int]], w: int, h: int):
-    assert len(vs) == 3
-    from itertools import product
 
+def barycentric(vs : List[Tuple[int, int]], p : Tuple[int, int]):
+    assert len(vs) == 3
+    vs = np.array(vs) # for vectorized + and - ops
+    
+    # TODO
+    # why the hell I had to use BA and CA instead of AC, CA to make it work?
+    a = vs[0]
+    ab = a - vs[1]
+    ac = a - vs[2]
+
+    pa = p - a
+    v1, v2 = np.array([ac, ab, pa]).T.astype(float)
+    x, y, z = np.cross(v1, v2).astype(float)
+    if z == 0:
+        return np.array((-1, -1, -1)) # negative ones (to be discarded as not inside triangle)
+    barycentric_coords = np.array([
+        1.0 - (x + y) / z, 
+        x / z,
+        y / z
+    ])
+    return barycentric_coords
+
+
+def triangle_bbox_iterate(vs : List[Tuple[int, int]], fn: Callable[[np.ndarray], bool]) -> List[Tuple[int, int]]:
     ws, hs = zip(*vs)
     bbox_top, bbox_bot = max(hs), min(hs)
     bbox_r, bbox_l = max(ws), min(ws)
@@ -41,30 +59,12 @@ def fill_triangle(vs : List[Tuple[int, int]], w: int, h: int):
     assert len(points) == (bbox_top - bbox_bot + 1) * (bbox_r - bbox_l + 1)
     
     points = np.array(points)
-    vs = np.array(vs) # for vectorized + and - ops
-    
-    # TODO
-    # why the hell I had to use BA and CA instead of AC, CA to make it work?
-    a = vs[0]
-    ab = a - vs[1]
-    ac = a - vs[2]
-
     pixels = []
     for p in points:
-        pa = p - a
-        v1, v2 = np.array([ac, ab, pa]).T.astype(float)
-        x, y, z = np.cross(v1, v2).astype(float)
-        if z == 0:
-            continue
-        barycentric = np.array([
-            1.0 - (x + y) / z, 
-            x / z,
-            y / z
-        ])
-        if all(barycentric >= 0):
+        barycentric_coords = barycentric(vs, p)
+        if fn(barycentric_coords):
             pixels.append(p)
-    return pixels     
-    # draw_pixels(pixels, w, h, color=color)
+    return pixels 
 
 
 def bresenham(x0, y0, x1, y1) -> Tuple[int, int]:

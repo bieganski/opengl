@@ -1,11 +1,12 @@
 from numpy.lib.twodim_base import tri
 from model_parser import ModelParser
-from drawer import draw_pixels, bresenham, fill_triangle
+from drawer import draw_pixels, bresenham, triangle_bbox_iterate
 
 from pathlib import Path
 from operator import itemgetter
 from itertools import combinations, chain
 from dataclasses import dataclass
+from typing import Callable, List, Tuple
 
 from PIL import Image
 from matplotlib import pyplot as plt
@@ -46,42 +47,71 @@ class Solution():
             norm = np.finfo(float).eps
         return v / norm
 
+
+    # returns normalized value - from interval [-1.0; 1.0]
+    @staticmethod
+    def calculate_color_intensity(triangle_fcoords):
+        triangle_fcoords = [list(x) for x in triangle_fcoords]
+        a, b, c = map(np.array, triangle_fcoords)
+        ab, ac = b - a, c - a
+        v = np.cross(ab, ac)
+        v = Solution.normalize(v)
+        light = np.array([0,1,0])
+        intensity = np.dot(light, v)
+        mmax = sum(abs(light))
+        fr, to = [-mmax, mmax], [-1., 1.]
+        intensity = np.interp(intensity, fr, to)
+        return intensity
+        
     @staticmethod
     def calculate_color_back_face_culling(all_fcoords3, _, __):
         for triangle in all_fcoords3:
-            triangle = [list(x) for x in triangle]
-            a, b, c = map(np.array, triangle)
-            ab, ac = b - a, c - a
-            v = np.cross(ab, ac)
-            v = Solution.normalize(v)
-            light = np.array([0,1,0])
-            intensity = np.dot(light, v)
-            # yield must be the last instruction in a loop to work properly.
+            intensity = __class__.calculate_color_intensity(triangle)
             if intensity <= 0:
                 yield None
             else:
-                mmax = sum(abs(light))
-                fr, to = [-mmax, mmax], [0., 255.]
+                fr, to = [0., 1.], [0., 255.] # no ABS
                 intensity = np.interp(intensity, fr, to)
                 yield int(intensity)
 
     @staticmethod
     def calculate_color_zbuffer(all_fcoords3, w, h):
-        
+        for triangle in all_fcoords3:
+            intensity = __class__.calculate_color_intensity(triangle)
+            fr, to = [-1., 1.], [0., 255.] # ABS
+            intensity = np.interp(intensity, fr, to)
+            yield int(intensity)
+
+    # * finds bounding box and calculates barycentric coordinates
+    # * returns pixel if and only if all it's barycentric coords are positive
+    @staticmethod
+    def fill_full_triangle(vs : List[Tuple[int, int]]):
+        f = lambda x: all(x >= 0)
+        return triangle_bbox_iterate(vs, f)
+
+    # * finds bounding box and calculates barycentric coordinates
+    # * draws pixel if zcoords are ok XXX
+    @staticmethod
+    def fill_triangle_zbuffer(vs : List[Tuple[int, int]]):
+
         @dataclass
         class State():
             w : int
             h : int
-            _zbuffer : np.ndarray
-
+            zbuffer : np.ndarray = None
             def __post_init__(self):
-                self._zbuffer = np.empty(shape=(self.w, h))
+                self.zbuffer = np.empty(shape=(self.w, self.h))
+
+        state = State(400, 400) # XXX use w,h
+
+        def f(barycentric_coords):
+            nonlocal state # capture state (preserved for all invocations)
+            return True
         
-        a = State()
-        raise NotImplementedError()
+        return triangle_bbox_iterate(vs, f)
 
     @staticmethod
-    def shade_polygons(render_function):
+    def shade_polygons(render_function : Callable, fill_function : Callable):
         vs = ModelParser.get_vertices(path)
         fs = ModelParser.get_faces(path)
             
@@ -101,7 +131,7 @@ class Solution():
         for color, triangle in tqdm(zip(render_fn, icoords2)):
             if color is None:
                 continue
-            pixels = fill_triangle(triangle, w, h)
+            pixels = fill_function(triangle)
             for p in pixels:
                 im.putpixel(p, value=color)
         im = np.asarray(im)
@@ -111,8 +141,8 @@ class Solution():
 
     @staticmethod
     def lab2():
-        Solution.shade_polygons(Solution.calculate_color_back_face_culling)
+        __class__.shade_polygons(__class__.calculate_color_back_face_culling, __class__.fill_full_triangle)
 
     @staticmethod
     def lab3():
-        Solution.shade_polygons(Solution.calculate_color_zbuffer)
+        __class__.shade_polygons(__class__.calculate_color_zbuffer, __class__.fill_triangle_zbuffer)
