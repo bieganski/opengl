@@ -11,6 +11,6 @@ from solutions import Solution
 
 
 # exit(0)
-# Solution.lab1()
+Solution.lab1()
 # Solution.lab2()
-Solution.lab3()
+# Solution.lab3()

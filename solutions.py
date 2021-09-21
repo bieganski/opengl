@@ -1,6 +1,6 @@
 from numpy.lib.twodim_base import tri
 from model_parser import ModelParser
-from drawer import draw_pixels, bresenham, triangle_bbox_iterate
+from drawer import draw_pixels, bresenham, triangle_bbox_iterate, barycentric
 
 from pathlib import Path
 from operator import itemgetter
@@ -58,9 +58,6 @@ class Solution():
         v = Solution.normalize(v)
         light = np.array([1,1,1])
         intensity = np.dot(light, v)
-        mmax = sum(abs(light))
-        fr, to = [-mmax, mmax], [-1., 1.]
-        intensity = np.interp(intensity, fr, to)
         return intensity
         
     @staticmethod
@@ -79,9 +76,10 @@ class Solution():
         for triangle in all_fcoords3:
             intensity = __class__.calculate_color_intensity_norm(triangle)
             intensity = abs(intensity)
-            fr, to = [0., 1.], [0., 255.]
-            intensity = np.interp(intensity, fr, to)
-            yield int(intensity)
+            yield intensity
+            # fr, to = [0., 1.], [0., 255.]
+            # intensity = np.interp(intensity, fr, to)
+            # yield int(intensity)
 
     # * finds bounding box and calculates barycentric coordinates
     # * returns pixel if and only if all it's barycentric coords are positive
@@ -131,7 +129,7 @@ class Solution():
         ts = ModelParser.get_textures(path)
             
         w, h = 400, 400
-        im = Image.new("L", (w, h))
+        im = Image.new("RGB", (w, h))
 
         lmap = lambda f, x : list(map(f,x))
         
@@ -140,18 +138,35 @@ class Solution():
             return lmap(f, f3)
         
         fcoords3 = [itemgetter(*f)(vs) for f in fs]
-        tvcoords3 = [itemgetter(*f)(vts) for f in ts]
+        tvcoords2 = lmap(lambda xs : lmap(lambda x: x[:2], xs), [itemgetter(*f)(vts) for f in ts])
         icoords2 = lmap(f3_to_i3, fcoords3)
 
-        # raise ValueError(tvcoords3[0])
-
         render_fn = render_function(fcoords3)
-        for color_intensity, triangle, texture in tqdm(zip(render_fn, icoords2, ts)):
+        texture = Image.open("model/african_head_diffuse.tga")
+        texture = np.array(texture)
+        texture = np.flip(texture, axis=0)
+        texture = np.rot90(texture)
+        for color_intensity, triangle, texture_norm in tqdm(zip(render_fn, icoords2, tvcoords2)):
             if color_intensity is None:
                 continue
-            color = color_intensity # XXX
+            texture_size = (1024, 1024)
+            assert texture.shape[:2] == texture_size
+            assert texture_size[0] == texture_size[1] # otherwise adjust np.interp params
+            fr, to = [0., 1.], [0., texture_size[0]]
+            texture_coord = np.interp(texture_norm, fr, to)
+            ind = np.lexsort((texture_coord[:,0], texture_coord[:,1])) # sort by (h, w)
+            texture_coord = texture_coord[ind]
+            triangle = sorted(triangle, key=lambda x: (x[1], x[0])) # sort by y,x in non-decreasing way, for UV texture interpolation 
             for pixel in fill_function(triangle):
-                im.putpixel(pixel, value=color)
+                assert color_intensity <= 1.005
+                barycentric_coords = barycentric(np.array(triangle)[:, :2], pixel)
+                x, y, z = barycentric_coords
+                # XXX lol, there are 6 permutations of x,y,z. i tried all to find "proper one", TODO make it better
+                barycentric_coords = x, z, y
+                texture_idx = np.dot(barycentric_coords, texture_coord).astype(int)
+                color = texture[texture_idx[0], texture_idx[1]]
+                color = (color * color_intensity).astype(int)
+                im.putpixel(pixel, value=tuple(color))
         
         im = np.asarray(im)
         im = np.flip(im, 0)

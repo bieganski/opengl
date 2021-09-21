@@ -14,7 +14,7 @@ def draw_pixels(pixels : List[Tuple[int, int]], w=640, h=480, color=0xff):
     for p in pixels:
         im.putpixel(p, value=color)
     # im.show()
-    plt.imshow(np.asarray(im))
+    plt.imshow(np.flip(np.asarray(im), 0))
     plt.show()
 
 def cross(v1, v2):
